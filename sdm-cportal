@@ -129,9 +129,10 @@ def nowtime():
 
 def logmsg(pd, msg):
     if pd.logmsg != "":
-        tfcmd('{} "{}"'.format(pd.logmsg, msg))
-    tfcmd('echo {} FirstBoot: "{}" > /dev/console'.format(nowtime(), msg))
-    if pd.debug: print("{} {}".format(nowtime(), msg))
+        tfcmd(f'{pd.logmsg} "{msg}"')
+    tfcmd(f'echo {nowtime()} FirstBoot: "{msg}" > /dev/console')
+    if pd.debug:
+        print(f"{nowtime()} {msg}")
 
 def tfcmd(docmd):
     #
@@ -148,10 +149,11 @@ def gocmd(docmd):
     return r.stdout.decode('utf-8')
     
 def stopifactive(pd, service, logit):
-    active = gocmd("systemctl show -p ActiveState {} --value".format(service)).rstrip()
+    active = gocmd(f"systemctl show -p ActiveState {service} --value").rstrip()
     if active == "active":
-        if logit: logmsg(pd, "Stopping service '{}'".format(service))
-        tfcmd("systemctl stop {}".format(service))
+        if logit:
+            logmsg(pd, f"Stopping service '{service}'")
+        tfcmd(f"systemctl stop {service}")
 
 def getmyipaddr(pd):
     for s in gocmd("ip -o -f inet addr show").split("\n"):
@@ -162,16 +164,19 @@ def getmyipaddr(pd):
     return ""
 
 def iponline(ipaddr):
-    return tfcmd("ping -c 1 -W 1 {}".format(ipaddr))
+    return tfcmd(f"ping -c 1 -W 1 {ipaddr}")
 
 def apon(pd):
-    logmsg(pd, "Enable Access Point for SSID '{}' on {}".format(pd.apssid, pd.wlan))
-    stopifactive(pd, "wpa_supplicant@{}".format(pd.wlan), False)
-    qdelfile("/etc/wpa_supplicant/wpa_supplicant-{}.conf".format(pd.wlan))
-    qcopyfile("/etc/wpa_supplicant/{}-ap-wpa_supplicant.conf".format(pd.facname), "/etc/wpa_supplicant/wpa_supplicant-{}.conf".format(pd.wlan))
+    logmsg(pd, f"Enable Access Point for SSID '{pd.apssid}' on {pd.wlan}")
+    stopifactive(pd, f"wpa_supplicant@{pd.wlan}", False)
+    qdelfile(f"/etc/wpa_supplicant/wpa_supplicant-{pd.wlan}.conf")
+    qcopyfile(
+        f"/etc/wpa_supplicant/{pd.facname}-ap-wpa_supplicant.conf",
+        f"/etc/wpa_supplicant/wpa_supplicant-{pd.wlan}.conf",
+    )
     if not pd.dual:
-        qdelfile("/etc/systemd/network/11-{}-wlan0.network".format(pd.facname))
-        with open("/etc/systemd/network/11-{}-wlan0-AP.network".format(pd.facname), 'w') as f:
+        qdelfile(f"/etc/systemd/network/11-{pd.facname}-wlan0.network")
+        with open(f"/etc/systemd/network/11-{pd.facname}-wlan0-AP.network", 'w') as f:
             f.write("[Match]\n\
 Name={}\n\
 \n\
@@ -182,15 +187,18 @@ Address={}/24\n\
 [DHCPServer]\n\
 DNS={}\n".format(pd.wlan, pd.ip, pd.ip))
     tfcmd("systemctl daemon-reload")
-    logmsg(pd, "Start Access Point services systemd-networkd and wpa_supplicant@{}".format(pd.wlan))
+    logmsg(
+        pd,
+        f"Start Access Point services systemd-networkd and wpa_supplicant@{pd.wlan}",
+    )
     tfcmd("systemctl restart systemd-networkd")
-    tfcmd("systemctl start wpa_supplicant@{}".format(pd.wlan))
+    tfcmd(f"systemctl start wpa_supplicant@{pd.wlan}")
 
 def aponifsingle(pd):
     if not pd.dual: apon(pd)
 
 def writewpaconf(pd):
-    with open("/etc/wpa_supplicant/{}-wpa-supplicant.conf".format(pd.facname), 'w') as f:
+    with open(f"/etc/wpa_supplicant/{pd.facname}-wpa-supplicant.conf", 'w') as f:
         f.write('ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\n\
 country={}\n\
 \n\
@@ -203,28 +211,31 @@ def wifion(pd):
     if not pd.dual: logmsg(pd, "Disable Access Point on wlan0")
     stopifactive(pd, "wpa_supplicant@wlan0", False)
     qdelfile("/etc/wpa_supplicant/wpa_supplicant.conf-wlan0")
-    qcopyfile("/etc/wpa_supplicant/{}-wpa-supplicant.conf".format(pd.facname), "/etc/wpa_supplicant/wpa_supplicant-wlan0.conf")
+    qcopyfile(
+        f"/etc/wpa_supplicant/{pd.facname}-wpa-supplicant.conf",
+        "/etc/wpa_supplicant/wpa_supplicant-wlan0.conf",
+    )
     if not pd.dual:
-        qdelfile("/etc/systemd/network/11-{}-wlan0-AP.network".format(pd.facname))
-    with open("/etc/systemd/network/11-{}-wlan0.network".format(pd.facname), 'w') as f:
+        qdelfile(f"/etc/systemd/network/11-{pd.facname}-wlan0-AP.network")
+    with open(f"/etc/systemd/network/11-{pd.facname}-wlan0.network", 'w') as f:
         f.write('[Match]\nName=wlan0\n\n[Network]\nDHCP=yes\n\n')
-    logmsg(pd, "Enable WiFi on wlan0 for SSID '{}'".format(pd.ssid))
+    logmsg(pd, f"Enable WiFi on wlan0 for SSID '{pd.ssid}'")
     tfcmd("systemctl daemon-reload")
     tfcmd("systemctl restart systemd-networkd")
     tfcmd("systemctl start wpa_supplicant@wlan0")
 
 def writel10n(pd, keymap, locale, timezone):
-    ostr = ""
-    if keymap != "": ostr = "keymap={}".format(keymap)
-    if locale != "": ostr = "{}\nlocale={}".format(ostr, locale)
-    if timezone != "": ostr = "{}\ntimezone={}".format(ostr, timezone)
+    ostr = f"keymap={keymap}" if keymap != "" else ""
+    if locale != "":
+        ostr = f"{ostr}\nlocale={locale}"
+    if timezone != "":
+        ostr = f"{ostr}\ntimezone={timezone}"
     if ostr != "":
         if pd.sdm:
-            with open("/etc/{}/local-1piboot.conf".format(pd.facname), 'w') as f:
-                f.write("{}\n".format(ostr))
-        else:
-            if pd.l10nhandler != "":
-                tfcmd('{} "{}" "{}" "{}"'.format(pd.l10nhandler, keymap, locale, timezone))
+            with open(f"/etc/{pd.facname}/local-1piboot.conf", 'w') as f:
+                f.write(f"{ostr}\n")
+        elif pd.l10nhandler != "":
+            tfcmd(f'{pd.l10nhandler} "{keymap}" "{locale}" "{timezone}"')
 
 class sdmRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, pd, *args, **kwargs):
@@ -242,24 +253,21 @@ class sdmRequestHandler(BaseHTTPRequestHandler):
         return
 
     def _adderror(self, oldstring, newstring):
-        if oldstring == "":
-            return newstring
-        return  "{}<br>{}".format(oldstring, newstring)
+        return newstring if oldstring == "" else f"{oldstring}<br>{newstring}"
 
     def _buildresponse(self, pd):
         response = "<html><body><h1>WiFi Setup Results</h1>"
         if self.pd.connected:
-            response = "{}<h2>Obtained IP Address {} via WiFi SSID '{}'<br></h2>".format(response, self.pd.myip, self.pd.ssid)
+            response = f"{response}<h2>Obtained IP Address {self.pd.myip} via WiFi SSID '{self.pd.ssid}'<br></h2>"
         else:
-            response = "{}<h2>WiFi Did NOT Connect Successfully</h2>".format(response)
+            response = f"{response}<h2>WiFi Did NOT Connect Successfully</h2>"
         if self.pd.iconnected:
-            response = "{}<h2>Internet IS Accessible</h2>".format(response)
+            response = f"{response}<h2>Internet IS Accessible</h2>"
+        elif self.pd.internet:
+            response = f"{response}<h2>Internet is NOT Accessible</h2>"
         else:
-            if not self.pd.internet:
-                response = "{}<h2>Internet Accessibility was not tested</h2>".format(response)
-            else:
-                response = "{}<h2>Internet is NOT Accessible</h2>".format(response)
-        return "{}</body></html>".format(response)
+            response = f"{response}<h2>Internet Accessibility was not tested</h2>"
+        return f"{response}</body></html>"
 
     def _write_response(self, htmltext):
         self._set_response()
@@ -290,37 +298,57 @@ class sdmRequestHandler(BaseHTTPRequestHandler):
             if self.pd.password == "":
                 self.pd.allerrors = self._adderror(self.pd.allerrors, "Password cannot be blank")
             if self.pd.keymap != "":
-                if not tfcmd('grep "^  {} " /usr/share/doc/keyboard-configuration/xorg.lst'.format(self.pd.keymap)):
-                    self.pd.allerrors = self._adderror(self.pd.allerrors, "Unrecognized keymap '{}'".format(self.pd.keymap))
+                if not tfcmd(
+                    f'grep "^  {self.pd.keymap} " /usr/share/doc/keyboard-configuration/xorg.lst'
+                ):
+                    self.pd.allerrors = self._adderror(
+                        self.pd.allerrors,
+                        f"Unrecognized keymap '{self.pd.keymap}'",
+                    )
             if self.pd.locale != "":
-                if not tfcmd('grep "^{}" /usr/share/i18n/SUPPORTED'.format(self.pd.locale)):
-                    self.pd.allerrors = self._adderror(self.pd.allerrors, "Unrecognized locale '{}'".format(self.pd.locale))
+                if not tfcmd(
+                    f'grep "^{self.pd.locale}" /usr/share/i18n/SUPPORTED'
+                ):
+                    self.pd.allerrors = self._adderror(
+                        self.pd.allerrors,
+                        f"Unrecognized locale '{self.pd.locale}'",
+                    )
             if self.pd.wificountry != "":
-                if not tfcmd('grep "^{}" /usr/share/zoneinfo/iso3166.tab'.format(self.pd.wificountry)):
-                    self.pd.allerrors = self._adderror(self.pd.allerrors, "Unrecognized WiFi Country '{}'".format(self.pd.wificountry))
+                if not tfcmd(
+                    f'grep "^{self.pd.wificountry}" /usr/share/zoneinfo/iso3166.tab'
+                ):
+                    self.pd.allerrors = self._adderror(
+                        self.pd.allerrors,
+                        f"Unrecognized WiFi Country '{self.pd.wificountry}'",
+                    )
             if self.pd.timezone != "":
-                if not os.path.isfile("/usr/share/zoneinfo/{}".format(self.pd.timezone)):
-                    self.pd.allerrors = self._adderror(self.pd.allerrors, "Unrecognized Timezone '{}'".format(self.pd.timezone))
+                if not os.path.isfile(f"/usr/share/zoneinfo/{self.pd.timezone}"):
+                    self.pd.allerrors = self._adderror(
+                        self.pd.allerrors,
+                        f"Unrecognized Timezone '{self.pd.timezone}'",
+                    )
             if self.pd.dhcpwait != "":
                 try:
                     dwait = self.pd.dhcpwait
                     self.pd.dhcpwait = int(dwait)
                 except:
-                    self.pd.allerrors = self._adderror(self.pd.allerrors, "dhcpwait value '{}' is not numeric".format(dwait))
+                    self.pd.allerrors = self._adderror(
+                        self.pd.allerrors,
+                        f"dhcpwait value '{dwait}' is not numeric",
+                    )
             else:
                 self.pd.dhcpwait = 15
             if self.pd.allerrors != "":
-                self.pd.allerrors = "<html><body><h1>Errors Found</h1><h2>{}</h2></body></html>".format(self.pd.allerrors)
+                self.pd.allerrors = f"<html><body><h1>Errors Found</h1><h2>{self.pd.allerrors}</h2></body></html>"
                 self._write_response(self.pd.allerrors)
+            elif self.pd.validate:
+                self._write_response(working_page.format(self.pd.ip, self.pd.ip))
             else:
-                if self.pd.validate:
-                    self._write_response(working_page.format(self.pd.ip, self.pd.ip))
-                else:
-                    logmsg(pd, "Write WiFi configuration with No Validation")
-                    writewpaconf(pd)
-                    self._write_response(notValidated)
-                    self._setstop(pd, True)
-                    return
+                logmsg(pd, "Write WiFi configuration with No Validation")
+                writewpaconf(pd)
+                self._write_response(notValidated)
+                self._setstop(pd, True)
+                return
         elif self.path == "/" or "/hotspot-detect.html" in self.path:
             self._write_response(greeting_page.format(self.pd.ip, self.pd.ip))
         elif self.path == "/webform":
@@ -334,14 +362,14 @@ class sdmRequestHandler(BaseHTTPRequestHandler):
             writewpaconf(pd)
             wifion(self.pd)
             # Wait for the network to come online
-            for i in range(1, self.pd.dhcpwait):
+            for _ in range(1, self.pd.dhcpwait):
                 myipaddr = getmyipaddr(self.pd)
                 if myipaddr != "" and not myipaddr.startswith("169.254"): break
                 logmsg(pd, "Waiting for wlan0 to obtain an IP address")
                 time.sleep(1)
             # get my ip address and error if it didn't connect
             myipaddr = getmyipaddr(self.pd)
-            logmsg(pd, "Obtained IP Address {}".format(myipaddr))
+            logmsg(pd, f"Obtained IP Address {myipaddr}")
             if myipaddr == "" or myipaddr.startswith("169.254"):
                 logmsg(pd, "Failed to obtain an IP Address")
                 aponifsingle(self.pd)
@@ -380,19 +408,22 @@ class sdmRequestHandler(BaseHTTPRequestHandler):
         return
 
 def cleanup(pd):
-    for fn in [ "11-{}-wlan0-AP.network".format(pd.facname), "11-{}-wlan0.network".format(pd.facname), "12-{}-wlan1-AP.network".format(pd.facname) ]:
-        qdelfile("/etc/systemd/network/.{}".format(fn))
-        qrename("/etc/systemd/network/{}".format(fn), "/etc/systemd/network/.{}".format(fn))
+    for fn in [f"11-{pd.facname}-wlan0-AP.network", f"11-{pd.facname}-wlan0.network", f"12-{pd.facname}-wlan1-AP.network"]:
+        qdelfile(f"/etc/systemd/network/.{fn}")
+        qrename(f"/etc/systemd/network/{fn}", f"/etc/systemd/network/.{fn}")
     for wl in [ 'wlan0', 'wlan1' ]:
-        qdelfile("/etc/wpa_supplicant/wpa_supplicant-{}.conf".format(wl))
+        qdelfile(f"/etc/wpa_supplicant/wpa_supplicant-{wl}.conf")
     # Set the final WPA config file for use
-    qcopyfile("/etc/wpa_supplicant/{}-wpa-supplicant.conf".format(pd.facname), "/etc/wpa_supplicant/wpa_supplicant.conf")
+    qcopyfile(
+        f"/etc/wpa_supplicant/{pd.facname}-wpa-supplicant.conf",
+        "/etc/wpa_supplicant/wpa_supplicant.conf",
+    )
 
 def runserver(pd):
     # Configure the network as we need it
     stopifactive(pd, "dhcpcd", True)
     for wl in [ 'wlan0', 'wlan1' ]:
-        stopifactive(pd, "wpa_supplicant@{}".format(wl), True)
+        stopifactive(pd, f"wpa_supplicant@{wl}", True)
     apon(pd)
     server_address = ('0.0.0.0', 80)
     handler = partial(sdmRequestHandler, pd)
@@ -402,8 +433,11 @@ def runserver(pd):
     httpd.server_close()
     cleanup(pd)
     for wl in [ 'wlan0', 'wlan1' ]:
-        stopifactive(pd, "wpa_supplicant@{}".format(wl), True)
-    qcopyfile("/etc/wpa_supplicant/{}-wpa-supplicant.conf".format(pd.facname), "/etc/wpa-supplicant/wpa_supplicant.conf")
+        stopifactive(pd, f"wpa_supplicant@{wl}", True)
+    qcopyfile(
+        f"/etc/wpa_supplicant/{pd.facname}-wpa-supplicant.conf",
+        "/etc/wpa-supplicant/wpa_supplicant.conf",
+    )
     logmsg(pd, "Stop systemd-networkd and start dhcpcd to bring the network online")
     tfcmd("systemctl daemon-reload")
     tfcmd("systemctl stop systemd-networkd")
@@ -423,10 +457,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     pd.apssid = args.apssid if args.apssid != None else "sdm"
     pd.ip = args.apip if args.apip != None else "10.1.1.1"
-    pd.logmsg = "" if args.logging == None else args.logging
+    pd.logmsg = "" if args.logging is None else args.logging
     pd.debug = args.debug
-    pd.facname = "sdm" if args.facility == None else args.facility
-    pd.l10nhandler = "" if args.l10nhandler == None else args.l10nhandler
+    pd.facname = "sdm" if args.facility is None else args.facility
+    pd.l10nhandler = "" if args.l10nhandler is None else args.l10nhandler
     pd.sdm = args.sdm
     pd.wlan = 'wlan0'
     for s in gocmd("ip addr show").split("\n"):
@@ -436,11 +470,14 @@ if __name__ == "__main__":
             break
     # Write the systemd.network files. For single wlan, this is handled in apon/wifion
     if os.path.isfile("/etc/wpa_supplicant/wpa_supplicant.conf"):
-        qcopyfile("/etc/wpa_supplicant/wpa_supplicant.conf", "/etc/wpa_supplicant/{}-wpa-supplicant.conf.orig".format(pd.facname))
+        qcopyfile(
+            "/etc/wpa_supplicant/wpa_supplicant.conf",
+            f"/etc/wpa_supplicant/{pd.facname}-wpa-supplicant.conf.orig",
+        )
     if pd.dual:
-        with open("/etc/systemd/network/11-{}-wlan0.network".format(pd.facname), 'w') as f:
+        with open(f"/etc/systemd/network/11-{pd.facname}-wlan0.network", 'w') as f:
             f.write('[Match]\nName=wlan0\n\n[Network]\nDHCP=yes\n\n')
-        with open("/etc/systemd/network/12-{}-{}-AP.network".format(pd.facname, pd.wlan), 'w') as f:
+        with open(f"/etc/systemd/network/12-{pd.facname}-{pd.wlan}-AP.network", 'w') as f:
             f.write("[Match]\n\
 Name={}\n\
 \n\
@@ -451,8 +488,8 @@ Address={}/24\n\
 [DHCPServer]\n\
 DNS={}\n".format(pd.wlan, pd.ip, pd.ip))
 
-    with open("/etc/wpa_supplicant/{}-ap-wpa_supplicant.conf".format(pd.facname), 'w') as f:
-            f.write('country=US\n\
+    with open(f"/etc/wpa_supplicant/{pd.facname}-ap-wpa_supplicant.conf", 'w') as f:
+        f.write('country=US\n\
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\n\
 \n\
 ### access point ###\n\
